@@ -1,0 +1,196 @@
+import { Request, Response } from "express";
+import bcrypt from 'bcrypt';
+import Pool from '../database/connection';
+import { generarJWT } from '../helpers/jwt';
+import MenuBar from '../class/menubar';
+import Utilitario from '../helpers/utilitario';
+// const db = new connectionDatabase();
+
+export const getInit = async (req: Request, res: Response) => {
+    const pool = req.params.pool || 'default';
+    try {
+        // const options = Pool.getConnectionOptions().database;
+        const data = await Pool.consultar('select * from sis_usuario', []);
+        // console.log(options);
+        res.json({ datos: data });
+    } catch (error) {
+        console.error(error);
+        res.status(404).json(error);
+    }
+}
+
+export const login = async (req: Request, res: Response): Promise<Response> => {
+    const { username, password, ip } = req.body;
+    const sql = `select ide_segusu,a.ide_segper,nombre_segper,nombre_segusu,activo_segusu,bloqueado_segusu,cambia_clave_segusu, fecha_caduc_segusu,password_segusu,foto_segusu,username_segusu
+    from seg_usuario a, seg_perfil b
+    where a.ide_segper=b.ide_segper and username_segusu = $1 and activo_segusu=true`;
+    try {
+        const data = await Pool.consultar(sql, [username]);
+        if (data.length === 0) {
+            return res.status(401).json({ mensaje: 'Usuario y contraseña incorrecta o no está activo' });
+        }
+        if (!bcrypt.compareSync(password, data[0].password_segusu)) {
+            return res.status(401).json({ mensaje: 'Usuario y contraseña incorrecta' });
+        }
+        if (data[0].bloqueado_segusu === true || data[0].bloqueado_segusu === null || data[0].bloqueado_segusu === undefined) {
+            return res.status(401).json({ mensaje: 'El usuario esta bloqueado contactese con el administrador del sistema' });
+        }
+        if (data[0].fecha_caduc_usua !== null || data[0].fecha_caduc_usua !== undefined) {
+            const fechaCaduca = Utilitario.transformarFecha(data[0].fecha_caduc_segusu);
+            // console.log( Utilitario.fechaActual(), fechaCaduca);
+            if (fechaCaduca < Utilitario.fechaActual()) {
+                return res.status(401).json({ mensaje: 'La vigencia de su cuenta a caducado, contactese con el administrador del sistema' });
+            };
+        }
+        if (!await isPerfilActivo(data[0].ide_segper)) {
+            return res.status(401).json({ mensaje: 'El perfil de su usuario esta desactivado, contactese con el administrador del sistema' });
+        }
+        if (data[0].cambia_clave_segusu === false) {
+            // const parametros = [{ ide_segusu: data[0].ide_segusu, ide_seacau: 1, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: 'Ingresó al sistema' }];
+            const auditoria = crearSQLAuditoriaAcceso(data[0].ide_segusu, 1, 'Ingresó al sistema', ip);
+        }
+        const datos = { foto: data[0].foto_segusu, ide_segusu: data[0].ide_segusu, username: data[0].username_segusu, nombre: data[0].nombre_segusu, perfil: data[0].nombre_segper }
+        // genero token
+        const token = await generarJWT(datos);
+        // ultimo acceso
+        const ultimoAcceso = await ultimoAccesoUsuario(data[0].ide_segusu, 4);
+        // generara menu de permisos
+        const menuOpcion = await getMenu(data[0].ide_segper);
+        return res.json({ ide_segusu: data[0].ide_segusu, datos, menu: menuOpcion, token, cambia_clave: data[0].cambia_clave_segusu, ultimoAcceso });
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json(error);
+    }
+}
+
+export const logout = async (req: Request, res: Response): Promise<Response> => {
+    const { ide_segusu, ip } = req.body;
+    console.log(req);
+    try {
+        const auditoria = crearSQLAuditoriaAcceso(ide_segusu, 4, 'Salió del sistema', ip);
+        return res.json(auditoria);
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json(error);
+    }
+}
+
+export const tokenrenew = async (req: any, res: Response) => {
+    // console.log(req.body);
+    const { data } = req.usuario;
+    // Generar el TOKEN - JWT
+    const token = await generarJWT(req.body);
+
+    // Obtener el usuario por UID
+    const sql = `select ide_segusu,a.ide_segper,nombre_segper as perfil,nombre_segusu as nombre,activo_segusu,foto_segusu as foto,username_segusu as username
+    from seg_usuario a, seg_perfil b
+    where a.ide_segper=b.ide_segper and ide_segusu = $1 `;
+
+    try {
+        const usuario = await Pool.consultar(sql, [data.ide_segusu]);
+        delete usuario.ide_segper;
+        // generara menu de permisos
+        const menuOpcion = await getMenu(usuario[0].ide_segper);
+        return res.json({
+            ok: true,
+            token,
+            datos: usuario,
+            menu: menuOpcion
+        });
+    } catch (error) {
+        console.log(error.detail);
+        return res.status(400).json(error)
+    }
+
+}
+
+async function isPerfilActivo(perfil: number) {
+    const sql = `select ide_segper,activo_segper from seg_perfil where ide_segper = $1 `;
+    const data = await Pool.consultar(sql, [perfil]);
+    if (data[0].activo_segper === null || data[0].activo_segper === undefined || data[0].activo_segper === false) {
+        // console.log('ingrese al false');
+        return false;
+    } else {
+        // console.log('ingrese al true');
+        return true;
+    }
+}
+
+export async function crearSQLAuditoriaAcceso(usuario: number, accion: number, detalle: string, ip: string) {
+    const parametros = [{ ide_segusu: usuario, ide_seacau: accion, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: detalle }];
+    const data = await Pool.insertar('seg_auditoria_acceso', parametros);
+}
+
+async function ultimoAccesoUsuario(usuario: number, accion: number) {
+    let fecha = null;
+    const data = await Pool.consultar(`select * from seg_auditoria_acceso where ide_segusu=$1 and ide_seacau=$2
+    and ide_seauac = (select max(ide_seauac) from seg_auditoria_acceso where ide_segusu=$1 and ide_seacau=$2 and fin_seauac=false)
+    `, [usuario, accion]);
+    if (data.length > 0) {
+        fecha = Utilitario.transformarFecha(data[0].fecha_seauac) + ' ' + data[0].hora_seauac || null;
+    }
+    return fecha;
+}
+
+async function getMenu(perfil: number) {
+    const menuOpciones = new Array<MenuBar>();
+    const lista = await Pool.consultar(`SELECT a.ide_segopc,nombre_segopc,a.seg_ide_segopc,ruta_segopc,icono_segopc,
+    (SELECT count(seg_ide_segopc) from seg_opcion where seg_ide_segopc=a.ide_segopc)
+    FROM seg_opcion a ,seg_perfil_opcion b
+    WHERE a.ide_segopc=b.ide_segopc
+    AND b.ide_segper = $1
+    ORDER BY a.seg_ide_segopc desc,nombre_segopc`, [perfil]);
+
+    for (const actual of lista) {
+        if (actual.seg_ide_segopc === null) {
+            const menus = new MenuBar();
+            if (actual.count > 0) {
+                // console.log("> " + actual.nom_opci);
+                menus.data = actual.ide_segopc
+                menus.titulo = actual.nombre_segopc;
+                menus.icono = actual.icono_segopc;
+                menus.path = actual.ruta_segopc;
+                menuOpciones.push(menus);
+                formar_menu_recursivo(menus, actual, lista);
+                continue;
+            }
+            menus.data = actual.ide_segopc
+            menus.titulo = actual.nombre_segopc;
+            menus.path = actual.ruta_segopc;
+            menus.icono = actual.icono_segopc;
+            menuOpciones.push(menus);
+            // console.log("* " + actual.nom_opci);
+        }
+    }
+    return menuOpciones;
+}
+
+function formar_menu_recursivo(menu: MenuBar, fila: any, lista: any) {
+    const child = Array<MenuBar>();
+    for (const filaActual of lista) {
+        if (fila.ide_segopc === filaActual.seg_ide_segopc) {
+            const menuNuevo = new MenuBar();
+            if (filaActual.count > 0) {
+                // console.log(">> " + filaActual.nom_opci);
+                menuNuevo.data = filaActual.ide_segopc
+                menuNuevo.titulo = filaActual.nombre_segopc;
+                menuNuevo.icono = filaActual.nombre_segopc;
+                menuNuevo.path = filaActual.ruta_segopc;
+                child.push(menuNuevo);
+                menu.submenu = child;
+                // menuOpciones.submenu = menu;
+                formar_menu_recursivo(menuNuevo, filaActual, lista);
+                continue;
+            }
+            menuNuevo.data = filaActual.ide_segopc
+            menuNuevo.titulo = filaActual.nombre_segopc;
+            menuNuevo.icono = filaActual.icono_segopc;
+            menuNuevo.path = filaActual.ruta_segopc;
+            child.push(menuNuevo);
+            menu.submenu = child;
+            // menuOpciones.submenu = menu;
+            // console.log("-- " + filaActual.nom_opci);
+        }
+    }
+    // console.log(menu);
+}
