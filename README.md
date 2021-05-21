@@ -8,4 +8,4 @@ Backend generado con nodejs pg express nodemon cors jwt typeorm bcrypt
 ### Actualizar repositorio local git
   - git fetch
   - git pull
-  --
+  -- prueba de commit
