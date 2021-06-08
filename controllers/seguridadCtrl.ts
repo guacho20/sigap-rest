@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Pool from '../database/connection';
 import Arbol from '../class/arbol';
 import { crearSQLAuditoriaAcceso } from './authCtrl';
+import { DataTypeNotSupportedError } from 'typeorm';
 
 export const getColumna = async (req: Request, res: Response): Promise<Response> => {
     const { nombreTabla, numeroTabla, ideOpcion } = req.body;
@@ -81,9 +82,17 @@ export const getConsultarArbol = async (req: Request, res: Response) => {
 }
 
 export const getCombo = async (req: Request, res: Response) => {
-    const { sql } = req.body;
+    const { nombreTabla, campoPrimario, campoNombre, condicion, campos } = req.body;
+    let sqlCondicion = "";
+    if (condicion) {
+        sqlCondicion = " WHERE 1 = 1 AND " + condicion;
+    }
+    const query = `SELECT ${campoPrimario} AS value, ${campoNombre} AS label
+        FROM ${nombreTabla}
+        ${sqlCondicion}
+        ORDER BY ${campoNombre}`;
     try {
-        const data = await Pool.consultar(sql);
+        const data = await Pool.consultar(query);
         res.json({ error: false, datos: data });
     } catch (error) {
         console.log(error.detail);
@@ -92,23 +101,198 @@ export const getCombo = async (req: Request, res: Response) => {
 }
 
 export const egecutarListaSql = async (req: Request, res: Response) => {
-    console.log(req.body);
+    // console.log(JSON.stringify(req.body));
     try {
-        for (const data of req.body.listaSQL) {
-
-            const { tipo, campoPrimario, nombreTabla, valores, condiciones } = data;
-            if (tipo === 'insertar') {
-                delete valores[campoPrimario];
-                // console.log('inserto', data);
-                const insert = await Pool.insertar(nombreTabla, valores);
-            } else if (tipo === 'modificar') {
-                // console.log('modificar', data);
-                const update = await Pool.actualizar(nombreTabla, valores, condiciones);
+        const datos = req.body.listaSQL;
+        datos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+        let cont = 0;
+        // TODO: recorro la lista de sql
+        for (const data of datos) {
+            if (data.tipo === 'insertar') {
+                cont = cont + 1;
+                delete data.valores[data.campoPrimario];
+                console.log('** veces rrecorrido, ', cont);
+                console.log('    ==>', data.nombreTabla, data.campoPrimario, data.valores[data.campoPrimario]);
+                console.log('    > inserto padre');
+                const uid = await Pool.insertar(data.nombreTabla, data.valores, data.campoPrimario);
+                // console.log('    SQL : ', uid);
+                console.log('    < retorno pk', 100);
+                const tablasHijas = data.relacion.split(',');
+                // TODO: verifico si la tabla tiene tablas hijas relacionadas y recorro las tablas relacionadas
+                if (tablasHijas.length > 0) {
+                    for (const tabla of tablasHijas) {
+                        // TODO: verifico si la tabla relacionada tiene registros hijos
+                        const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla; });
+                        hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+                        console.log('        ***# ', hijos);
+                        console.log('        ***# ' + hijos.length + ' #***');
+                        if (hijos.length > 0) {
+                            console.log('    >> Tengo hijos');
+                            for (const hijo of hijos) {
+                                delete hijo.valores[hijo.campoPrimario];
+                                hijo.valores[hijo.campoforanea] = uid.raw[0][data.campoPrimario];
+                                console.log('        ==>', hijo.nombreTabla, hijo.campoPrimario, hijo.valores[hijo.campoPrimario]);
+                                console.log('        > inserto padre');
+                                const uid1 = await Pool.insertar(hijo.nombreTabla, hijo.valores);
+                                // console.log('SQL : ', uid1);
+                                console.log('        < retorno pk', 200);
+                                removeItemFromArr(datos, hijo);
+                                const tablasHijas1 = hijo.relacion.split(',');
+                                if (tablasHijas1.length > 0) {
+                                    for (const tabla1 of tablasHijas1) {
+                                        const hijos1 = datos.filter((hijo1: any) => { return hijo1.nombreTabla === tabla1; });
+                                        hijos1.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+                                        console.log('            ***# ', hijos1);
+                                        console.log('            ***# ' + hijos1.length + ' #***');
+                                        if (hijos1.length > 0) {
+                                            console.log('        >> Tengo hijos');
+                                            for (const hijo2 of hijos1) {
+                                                delete hijo2.valores[hijo2.campoPrimario];
+                                                hijo2.valores[hijo2.campoforanea] = uid1.raw[0][hijo.campoPrimario];
+                                                console.log('            ==>', hijo2.nombreTabla, hijo2.campoPrimario, hijo2.valores[hijo2.campoPrimario]);
+                                                console.log('            > inserto padre');
+                                                const uid2 = await Pool.insertar(hijo2.nombreTabla, hijo2.valores, hijo2.campoPrimario);
+                                                // console.log('SQL : ', uid2);
+                                                console.log('            < retorno pk', 300);
+                                                removeItemFromArr(datos, hijo2);
+                                            }
+                                        } else {
+                                            console.log('        >> No tengo hijos');
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            console.log('    >> No tengo hijos');
+                            // removeItemFromArr(datos, hijo);
+                        }
+                    }
+                }
+            } else if (data.tipo === 'modificar') {
+                const update = await Pool.actualizar(data.nombreTabla, data.valores, data.condiciones);
             }
         }
+        /*for (const data of datos) {
+            const { tipo, campoPrimario, campoforanea, nombreTabla, valores, condiciones, relacion, numero } = data;
+            if (tipo === 'insertar') {
+                // delete valores[campoPrimario];
+                // verifico que sea padre
+                // if (1)
+                console.info('--> inserto padre', nombreTabla);
+                // const uid = await Pool.insertar(data.nombreTabla, data.valores);
+                console.log('dato insertado', valores[campoPrimario]);
+                // console.log('retorno', uid.raw[0][campoPrimario]);
+                const tablasHijas = data.relacion.split(',');
+                // console.log(tablasHijas.length);
+                if (tablasHijas.length > 0) {
+                    for (const tabla of tablasHijas) {
+                        console.log('Tabla hija a recorrer ', tabla);
+                        // TODO: verifico si tiene registros la tabla relacionada
+                        const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla; });
+                        hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+                        console.log('Hijos ', hijos);
+                        for (const hijo of hijos) {
+                            // delete hijo.valores[hijo.campoPrimario];
+                            hijo.valores[hijo.campoforanea] = 100;// uid.raw[0][campoPrimario];
+                            if (hijo.relacion) {
+                                formarGuardarRecursivo(hijo, datos);
+                            } else {
+                                console.log('Inserto hijo ');
+                                console.log('dato insertado', hijo.valores[hijo.campoPrimario]);
+                               // const uidHijo = await Pool.insertar(hijo.nombreTabla, hijo.valores);
+                                // console.log('retorno ', uidHijo.raw[0][hijo.campoPrimario]);
+                                console.log('Elimino el hijno insertado del array');
+                                removeItemFromArr(datos, hijo);
+                            }
+                        }
+                    }
+                }
+                // console.log('Array corrido, ', datos);
+                /*if (data.numero === '1') {
+                    if (data.isPadre) {
+                        console.log('soy padre y mis hijos son: > ', data.relacion);
+                        console.info('--> inserto padre', nombreTabla);
+                        const uid = await Pool.insertar(nombreTabla, valores);
+                        console.info('<-- retorno ide padre');
+                        const tablasHijas = data.relacion.split(',');
+                        // TODO: Recorro las tablas hijas
+                        for (const tabla of tablasHijas){
+                            console.log('tabla hija >: ',tabla);
+                            // TODO: Verifico si la tabla hija tiene datos
+                            const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla;});
+                            hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+                            // TODO: Recooro los hijos para insertar
+                            for (const hijo of hijos){
+                                // TODO: verifico si el hijo asu vez es padre
+                                // console.log('insetar >',hijo, uid.raw[0][hijo.campoforanea]);
+                                delete hijo.valores[hijo.campoPrimario];
+                                hijo.valores[hijo.campoforanea] = uid.raw[0][hijo.campoforanea];
+                                if(!hijo.isHijo){
+                                    console.log('    tengo hijos >>: ',hijo.relacion);
+                                    formarGuardarRecursivo(uid, hijo, datos);
+                                }else{
+                                    const ds = await Pool.insertar(hijo.nombreTabla, hijo.valores);
+                                    console.log(' No tengo hijos >>: ',hijo.relacion);
+                                }
+                            }
+                        }
+                        /*
+                        const tablasHijas = datos.filter(function (tabla: any) {
+                            // console.log(col.nombreTabla, col.nombreTabla === relacion);
+                            return tabla.nombreTabla === relacion;
+                        })
+                        for (const tabla of tablasHijas){
+                            console.log('Recorro las tablas hijas', tablasHijas);
+                        }*/
+        /* }
+
+        /* const cadenaMeses = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,";
+         const tablasHijas = cadenaMeses.split(',');
+         console.log(tablasHijas.length);*/
+        /* 
+
+        // rrecorro los hijos
+        // console.info('Recorro los hijos ');
+        // tslint:disable-next-line: only-arrow-functions
+        const hijos = datos.filter(function (col: any) {
+            // console.log(col.nombreTabla, col.nombreTabla === relacion);
+            return col.nombreTabla === relacion;
+        });
+        // console.log('hijos ordenados > ', );
+        // ordeno la insercion
+        hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+        if (hijos.length > 0) {
+            // inserto padre
+            console.info('--> inserto padre', nombreTabla);
+            // console.log(valores);
+            // retorno ide padre
+            console.info('<-- retorno ide padre');
+            const uid = 102;
+            for (const item of hijos) {
+                if (item.relacion) {
+                    item.valores[item.campoforanea] = uid;
+                    console.info('  ===> Soy hijo y padre a la vez', item.relacion);
+                    formarGuardarRecursivo(uid, item, datos);
+                    continue;
+                }
+            }
+        } else {
+            console.info('--> Inserto los hijos que no tienen mas hijos ');
+        } */
+        // valores[campoforanea] = uid;
+        /*} else if(!data.isPadre && data.isHijo) {
+            console.info('No son padres');
+        }*/
+        // const insert = await Pool.insertar(nombreTabla, valores);
+        /*} else if (tipo === 'modificar') {
+            // console.log('modificar', data);
+            // const update = await Pool.actualizar(nombreTabla, valores, condiciones);
+        }
+        // console.log('Datos actuales, >>> ', datos);
+    }*/
         res.json({ mensaje: 'echo comit ok' });
     } catch (error) {
-        console.log(error.detail);
+        console.log(error.detail, error);
         res.status(400).json(error);
     }
 }
@@ -127,8 +311,82 @@ export const getEliminar = async (req: Request, res: Response) => {
 };
 
 export const auditoriaAccesoPantalla = async (req: Request, res: Response) => {
-    const {ide_segusu, ide_opci, ip} = req.body;
-    const data = crearSQLAuditoriaAcceso(ide_segusu,1,ide_opci,ip);
+    const { ide_segusu, ide_segopc, ip } = req.body;
+    try {
+        const data = await crearSQLAuditoriaAcceso(ide_segusu, 1, ide_segopc, ip);
+        console.log('retorno ', data);
+        res.json({ mensaje: 'echo comit ok' });
+    } catch (error) {
+        console.log(error.detail);
+        res.status(400).json(error);
+    }
+}
+
+export const getOpciones = async (req: Request, res: Response) => {
+    const sql = `select a.ide_segopc as value,nombre_segopc||' | '|| nuevo as label
+                from (
+                select a.ide_segopc,a.nombre_segopc,b.seg_ide_segopc,( case when b.seg_ide_segopc is null then 'PANTALLA' else 'MENU' end ) as nuevo
+                from seg_opcion a
+                left join (
+                 select DISTINCT seg_ide_segopc
+                 from seg_opcion
+                 where seg_ide_segopc  in ( select ide_segopc from seg_opcion ) ) b
+                on a.ide_segopc=b.seg_ide_segopc order by a.nombre_segopc
+                )a`;
+    try {
+        const data = await Pool.consultar(sql);
+        res.json({ error: false, datos: data });
+    } catch (error) {
+        console.log(error.detail);
+        res.status(500).json(error);
+    }
+}
+
+async function formarGuardarRecursivo(children: any, datos: any) {
+    console.info('    --> inserto padre', children.nombreTabla);
+    console.log('dato insertado', children.valores[children.campoPrimario]);
+    const uid = await Pool.insertar(children.nombreTabla, children.valores);
+    // console.log('dato insertado', uid);
+    // console.log('    retorno', uid.raw[0][children.campoPrimario]);
+    const tablasHijas = children.relacion.split(',');
+    // console.log(tablasHijas.length);
+    if (tablasHijas.length > 0) {
+        for (const tabla of tablasHijas) {
+            console.log('    Tabla hija a recorrer ', tabla);
+            // TODO: verifico si tiene registros la tabla relacionada
+            const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla; });
+            hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+            console.log('Hijos ', hijos);
+            for (const hijo of hijos) {
+                delete hijo.valores[hijo.campoPrimario];
+                hijo.valores[hijo.campoforanea] = 200;// uid.raw[0][children.campoPrimario];
+                if (hijo.relacion) {
+                    formarGuardarRecursivo(hijo, datos);
+                } else {
+                    console.log('    Inserto hijo ');
+                    // const uidHijo = await Pool.insertar(hijo.nombreTabla, hijo.valores);
+                    // console.log('    retorno ', uidHijo.raw[0][hijo.campoPrimario])
+                    console.log('dato insertado', hijo.valores[hijo.campoPrimario]);
+                    console.log('    Elimino el hijno insertado del array');
+                    removeItemFromArr(datos, hijo);
+                }
+            }
+        }
+    }
+    removeItemFromArr(datos, children);
+
+}
+
+/**
+ * Elimina el dato de un array
+ * @param arr array
+ * @param item item a eliminar
+ */
+function removeItemFromArr(arr: any, item: any) {
+    const i = arr.indexOf(item);
+    if (i !== -1) {
+        arr.splice(i, 1);
+    }
 }
 
 async function getTabla(nombreTabla: string, numeroTabla: number, ideOpcion: number) {

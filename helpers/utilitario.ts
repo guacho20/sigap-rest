@@ -4,7 +4,7 @@ export default class Utilitario {
 
     static fechaActual(formato?: string) {
         if (formato === undefined) {
-            formato = 'DD-MM-YYYY';
+            formato = 'YYYY-MM-DD';
         }
         return moment(Date.now()).format(formato);
     }
