@@ -34,11 +34,21 @@ export default class Pool {
 
     /**
      * Metodo de consulta
+     * @param query {string} sql
+     * @param parameters {any[]} condicion con parametros
+     * @returns Promise<any>
+     */
+    static async consultar(query: string, parameters?: any[]): Promise<any> {
+        return await this.coneccion().query(query, parameters);
+    }
+
+    /**
+     * Metodo para ejecutar cualquier query
      * @param query sql
      * @param parameters condicion con parametros
      * @returns Promise<any>
      */
-    static async consultar(query: string, parameters?: any[]): Promise<any> {
+    static async ejecutarQuery(query: string, parameters?: any[]): Promise<any> {
         return await this.coneccion().query(query, parameters);
     }
 

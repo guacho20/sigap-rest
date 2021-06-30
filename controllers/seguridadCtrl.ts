@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcrypt';
 import Pool from '../database/connection';
 import Arbol from '../class/arbol';
 import { crearSQLAuditoriaAcceso } from './authCtrl';
-import { DataTypeNotSupportedError } from 'typeorm';
 
 export const getColumna = async (req: Request, res: Response): Promise<Response> => {
     const { nombreTabla, numeroTabla, ideOpcion } = req.body;
@@ -94,6 +94,54 @@ export const getCombo = async (req: Request, res: Response) => {
     try {
         const data = await Pool.consultar(query);
         res.json({ error: false, datos: data });
+    } catch (error) {
+        console.log(error.detail);
+        res.status(500).json(error);
+    }
+}
+
+export const cambiarClave = async (req: Request, res: Response) => {
+    const { ide_segusu, contrasenaActual, nuevaContrasena } = req.body;
+    const query = `update seg_usuario set password_segusu =$1 where ide_segusu=$2`;
+    try {
+        const usuario = await Pool.consultar('select password_segusu from seg_usuario where ide_segusu=$1', [ide_segusu]);
+        if (!bcrypt.compareSync(contrasenaActual, usuario[0].password_segusu)) {
+            return res.status(400).json({ mensaje: 'Contraseña actual incorrecta' });
+        }
+        const newPassword = await bcrypt.hashSync(nuevaContrasena, 10);
+        const data = await Pool.ejecutarQuery(query, [newPassword, ide_segusu]);
+        res.json({ error: false, mensaje: 'Se actualizo la contraseña' });
+    } catch (error) {
+        console.log(error.detail || error);
+        res.status(500).json(error);
+    }
+}
+
+export const getReglasClaveString = async (req: Request, res: Response) => {
+    const query = `select nombre_serecl, longitud_minima_serecl, num_carac_espe_serecl,
+    num_mayus_serecl, num_minusc_serecl, num_numeros_serecl,longitud_login_serecl from seg_reglas_clave`;
+    const reglas = [];
+    try {
+        const data = await Pool.consultar(query);
+        if (data) {
+            const lonmin = data[0].longitud_minima_serecl || 0;
+            const lonmax = data[0].longitud_login_serecl || 0;
+            const num = data[0].num_numeros_serecl || 1;
+            const minus = data[0].num_minusc_serecl || 1;
+            const mayus = data[0].num_mayus_serecl || 1;
+            const char = data[0].longitud_login_serecl || 8;
+            const carspe = data[0].longitud_login_serecl || 0;
+            reglas.push(
+                {
+                    regla: `Tener de ${lonmin} a ${lonmax} caracteres`,
+                },
+                {
+                    regla: `Incluir ${mayus} mayúscula, ${minus} minúscula y ${num} número`,
+                }, {
+                regla: `Puede contener caracteres especiales`,
+            })
+        }
+        res.json({ error: false, datos: reglas });
     } catch (error) {
         console.log(error.detail);
         res.status(500).json(error);
@@ -311,10 +359,10 @@ export const getEliminar = async (req: Request, res: Response) => {
 };
 
 export const auditoriaAccesoPantalla = async (req: Request, res: Response) => {
-    const { ide_segusu, ide_segopc, ip } = req.body;
+    const { ide_segusu, ide_segopc, ip, device, userAgent } = req.body;
     try {
-        const data = await crearSQLAuditoriaAcceso(ide_segusu, 1, ide_segopc, ip);
-        console.log('retorno ', data);
+        const data = await crearSQLAuditoriaAcceso(ide_segusu, 1, ide_segopc, ip, device, userAgent);
+        // console.log('retorno ', data);
         res.json({ mensaje: 'echo comit ok' });
     } catch (error) {
         console.log(error.detail);
@@ -335,6 +383,34 @@ export const getOpciones = async (req: Request, res: Response) => {
                 )a`;
     try {
         const data = await Pool.consultar(sql);
+        res.json({ error: false, datos: data });
+    } catch (error) {
+        console.log(error.detail);
+        res.status(500).json(error);
+    }
+}
+
+export const getClientes = async (req: Request, res: Response) => {
+    const sql = `select ide_cliente as value,cedula||' | '|| nombre as label
+    from (
+     select ide_cliente,cedula,nombre from rec_clientes order by ide_cliente limit 10
+    )a`;
+    try {
+        const data = await Pool.consultar(sql);
+        res.json({ error: false, datos: data, total: data.length });
+    } catch (error) {
+        console.log(error.detail);
+        res.status(500).json(error);
+    }
+}
+
+export const esUnico = async (req: Request, res: Response) => {
+    const { nombreTabla, campo, valorCampo } = req.body;
+    const sql = `select * from ${nombreTabla} where 1=1 and ${campo}=$1`;
+    // console.log(sql);
+    try {
+        const data = await Pool.consultar(sql, [valorCampo]);
+        console.log(data);
         res.json({ error: false, datos: data });
     } catch (error) {
         console.log(error.detail);

@@ -20,8 +20,11 @@ export const getInit = async (req: Request, res: Response) => {
 }
 
 export const login = async (req: Request, res: Response): Promise<Response> => {
-    const { username, password, ip } = req.body;
-    const sql = `select ide_segusu,a.ide_segper,nombre_segper,nombre_segusu,activo_segusu,bloqueado_segusu,cambia_clave_segusu, fecha_caduc_segusu,password_segusu,foto_segusu,username_segusu
+    const { username, password, ip, device, userAgent } = req.body;
+    // console.log(req.body);
+    const sql = `select ide_segusu,a.ide_segper,nombre_segper,nombre_segusu,fecha_reg_segusu,activo_segusu,
+    bloqueado_segusu,cambia_clave_segusu, fecha_caduc_segusu,password_segusu,foto_segusu,username_segusu,
+    correo_segusu
     from seg_usuario a, seg_perfil b
     where a.ide_segper=b.ide_segper and username_segusu = $1 and activo_segusu=true`;
     try {
@@ -47,9 +50,13 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
         }
         if (data[0].cambia_clave_segusu === false) {
             // const parametros = [{ ide_segusu: data[0].ide_segusu, ide_seacau: 1, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: 'Ingresó al sistema' }];
-            const auditoria = await crearSQLAuditoriaAcceso(data[0].ide_segusu, 3, 'Ingresó al sistema', ip);
+            const auditoria = await crearSQLAuditoriaAcceso(data[0].ide_segusu, 3, 'Ingresó al sistema', ip, device, userAgent);
         }
-        const datos = { foto: data[0].foto_segusu, ide_segusu: data[0].ide_segusu, username: data[0].username_segusu, nombre: data[0].nombre_segusu, perfil: data[0].nombre_segper }
+        const datos = {
+            foto: data[0].foto_segusu, ide_segusu: data[0].ide_segusu, username: data[0].username_segusu, nombre: data[0].nombre_segusu,
+            perfil: data[0].nombre_segper, fecha_caduc_segusu: data[0].fecha_caduc_segusu, fecha_reg_segusu: data[0].fecha_reg_segusu, 
+            correo_segusu: data[0].correo_segusu
+        }
         // genero token
         const token = await generarJWT(datos);
         // ultimo acceso
@@ -64,10 +71,10 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
 }
 
 export const logout = async (req: Request, res: Response): Promise<Response> => {
-    const { ide_segusu, ip } = req.body;
+    const { ide_segusu, ip, device, userAgent } = req.body;
     // console.log(req);
     try {
-        const auditoria = crearSQLAuditoriaAcceso(ide_segusu, 4, 'Salió del sistema', ip);
+        const auditoria = crearSQLAuditoriaAcceso(ide_segusu, 4, 'Salió del sistema', ip, device, userAgent);
         return res.json(auditoria);
     } catch (error) {
         console.log(error);
@@ -76,7 +83,7 @@ export const logout = async (req: Request, res: Response): Promise<Response> => 
 }
 
 export const tokenrenew = async (req: any, res: Response) => {
-    // console.log(req.body);
+
     const { data } = req.usuario;
     // Generar el TOKEN - JWT
     const token = await generarJWT(req.body);
@@ -105,7 +112,7 @@ export const tokenrenew = async (req: any, res: Response) => {
 }
 
 export const pantallasMasUsadas = async (req: any, res: Response) => {
-    console.log(req.body);
+    // console.log(req.body);
     const { ide_segusu } = req.body;
     // Obtener el usuario por UID
     const sql = `select detalle_seauac,(select nombre_segopc from seg_opcion where ide_segopc=a.detalle_seauac::integer),count(detalle_seauac) 
@@ -114,7 +121,7 @@ export const pantallasMasUsadas = async (req: any, res: Response) => {
     GROUP BY ide_segusu,detalle_seauac
     order by 3 desc
     limit 5 `;
-console.log(sql, ide_segusu);
+    // console.log(sql, ide_segusu);
     try {
         const data = await Pool.consultar(sql, [ide_segusu]);
         return res.json({
@@ -140,8 +147,8 @@ async function isPerfilActivo(perfil: number) {
     }
 }
 
-export async function crearSQLAuditoriaAcceso(usuario: number, accion: number, detalle: string, ip: string) {
-    const parametros = [{ ide_segusu: usuario, ide_seacau: accion, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: detalle }];
+export async function crearSQLAuditoriaAcceso(usuario: number, accion: number, detalle: string, ip: string, device: string, userAgent: string) {
+    const parametros = [{ ide_segusu: usuario, ide_seacau: accion, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: detalle, device_seauac: device,useragent_seauac: userAgent }];
     // console.log(parametros);
     const data = await Pool.insertar('seg_auditoria_acceso', parametros);
     return data;
