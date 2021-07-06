@@ -3,6 +3,7 @@ import cors from 'cors';
 
 import auth from './../routes/auth';
 import seguridad from './../routes/seguridad';
+import gerencialpdot from './../routes/gerencialpdotRoute';
 
 class Server {
 
@@ -20,8 +21,9 @@ class Server {
     }
 
     routes() {
-        this.app.use(auth)
-        this.app.use(seguridad)
+        this.app.use(auth);
+        this.app.use(seguridad);
+        this.app.use(gerencialpdot);
     }
 
     listen() {
