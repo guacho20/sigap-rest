@@ -4,7 +4,7 @@ export const generarJWT = (data: any) => {
     return new Promise((resolve, reject) => {
         const payload = { data };
         // console.log(process.env.SECRET_KEY, process.env.EXPIRE_JWT);
-        jwt.sign(payload, process.env.SECRET_KEY || 'secret-key', { expiresIn: "8m", }, (err, token) => {
+        jwt.sign(payload, process.env.SECRET_KEY || 'secret-key', { expiresIn: "25m", }, (err, token) => {
             if (err) {
                 console.log(err);
                 reject('No se pudo generar el JWT');

@@ -8,9 +8,23 @@ import Utilitario from '../helpers/utilitario';
 
 export const getInit = async (req: Request, res: Response) => {
     const pool = req.params.pool || 'default';
+    const sql = `select a.ide_proyecto,a.ide_matriz,detalle_proyecto,detalle_meta,detalle_perspectiva,
+sum(valor_variacion) as suma_porce,extract(year from fecha_variacion) as anio
+from (
+select a.ide_proyecto,detalle_proyecto,meta.ide_objetivo,meta.detalle_objetivo as detalle_meta,ide_matriz,detalle_perspectiva
+from ge_proyecto a, ge_objetivo meta,ge_matriz_frecuencia c,ge_perspectiva d
+where a.ide_proyecto=meta.ide_proyecto
+and meta.ide_objetivo = c.ide_objetivo
+and c.ide_perspectiva = d.ide_perspectiva	
+) a, (
+select ide_matriz,valor_variacion,fecha_variacion
+from ge_variacion 
+	) b where a.ide_matriz=b.ide_matriz
+group by extract(year from fecha_variacion),
+a.ide_proyecto,a.ide_matriz,detalle_proyecto,detalle_meta,detalle_perspectiva`;
     try {
         // const options = Pool.getConnectionOptions().database;
-        const data = await Pool.consultar('select * from sis_usuario', []);
+        const data = await Pool.consultar(sql, []);
         // console.log(options);
         res.json({ datos: data });
     } catch (error) {
@@ -54,7 +68,7 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
         }
         const datos = {
             foto: data[0].foto_segusu, ide_segusu: data[0].ide_segusu, username: data[0].username_segusu, nombre: data[0].nombre_segusu,
-            perfil: data[0].nombre_segper, fecha_caduc_segusu: data[0].fecha_caduc_segusu, fecha_reg_segusu: data[0].fecha_reg_segusu, 
+            perfil: data[0].nombre_segper, fecha_caduc_segusu: data[0].fecha_caduc_segusu, fecha_reg_segusu: data[0].fecha_reg_segusu,
             correo_segusu: data[0].correo_segusu
         }
         // genero token
@@ -82,20 +96,40 @@ export const logout = async (req: Request, res: Response): Promise<Response> => 
     }
 }
 
+export const updateProfile = async (req: Request, res: Response): Promise<Response> => {
+    const { nombre, correo_segusu, ide_segusu } = req.body;
+    // console.log(req);
+    const sql = `update seg_usuario set nombre_segusu=$1, correo_segusu=$2 where ide_segusu=$3`;
+    try {
+        const data = Pool.ejecutarQuery(sql, [nombre, correo_segusu, ide_segusu]);
+        return res.json(data);
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json(error);
+    }
+}
+
+
 export const tokenrenew = async (req: any, res: Response) => {
 
     const { data } = req.usuario;
     // Generar el TOKEN - JWT
-    const token = await generarJWT(req.body);
 
     // Obtener el usuario por UID
-    const sql = `select ide_segusu,a.ide_segper,nombre_segper as perfil,nombre_segusu as nombre,activo_segusu,foto_segusu as foto,username_segusu as username
+    const sql = `select ide_segusu,a.ide_segper,nombre_segper,nombre_segusu,fecha_reg_segusu,activo_segusu,
+    bloqueado_segusu,cambia_clave_segusu, fecha_caduc_segusu,password_segusu,foto_segusu,username_segusu,
+    correo_segusu
     from seg_usuario a, seg_perfil b
     where a.ide_segper=b.ide_segper and ide_segusu = $1 `;
-
     try {
         const usuario = await Pool.consultar(sql, [data.ide_segusu]);
         delete usuario.ide_segper;
+        const datos = {
+            foto: usuario[0].foto_segusu, ide_segusu: usuario[0].ide_segusu, username: usuario[0].username_segusu, nombre: usuario[0].nombre_segusu,
+            perfil: usuario[0].nombre_segper, fecha_caduc_segusu: usuario[0].fecha_caduc_segusu, fecha_reg_segusu: usuario[0].fecha_reg_segusu,
+            correo_segusu: usuario[0].correo_segusu
+        }
+        const token = await generarJWT(datos);
         // generara menu de permisos
         const menuOpcion = await getMenu(usuario[0].ide_segper);
         return res.json({
@@ -148,7 +182,7 @@ async function isPerfilActivo(perfil: number) {
 }
 
 export async function crearSQLAuditoriaAcceso(usuario: number, accion: number, detalle: string, ip: string, device: string, userAgent: string) {
-    const parametros = [{ ide_segusu: usuario, ide_seacau: accion, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: detalle, device_seauac: device,useragent_seauac: userAgent }];
+    const parametros = [{ ide_segusu: usuario, ide_seacau: accion, fecha_seauac: Utilitario.fechaActual(), hora_seauac: Utilitario.horaActual(), ip_seauac: ip, fin_seauac: false, detalle_seauac: detalle, device_seauac: device, useragent_seauac: userAgent }];
     // console.log(parametros);
     const data = await Pool.insertar('seg_auditoria_acceso', parametros);
     return data;

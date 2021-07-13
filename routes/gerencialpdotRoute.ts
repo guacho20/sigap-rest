@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { validarJWT } from './../middleware/validarJwt';
 import { poolConexion } from './../middleware/pool';
 import { getProyecto, getPostMeta, getPostProyectoIndicador } from './../controllers/gerencialpdotCtrl';
+import { getDetalleProyecto } from '../controllers/gerencialpdotCtrl';
 const router = Router();
 // todas las rutas del gerencialpdot
 /**
@@ -10,8 +10,9 @@ const router = Router();
  * validarJWT valida si esta autentificado para realizar la peticion de rest
  * getProyecto nombre de tu consulta logica del controlador
  */
-router.post('/api/:pool?/gerencialpdot/getProyecto', poolConexion, validarJWT, getProyecto);
-router.post('/api/:pool?/gerencialpdot/getPostMeta', poolConexion, validarJWT, getPostMeta);
-router.post('/api/:pool?/gerencialpdot/getPostProyectoIndicador', poolConexion, validarJWT, getPostProyectoIndicador);
+router.post('/api/:pool?/gerencialpdot/getProyecto', poolConexion, getProyecto);
+router.post('/api/:pool?/gerencialpdot/getPostMeta', poolConexion, getPostMeta);
+router.post('/api/:pool?/gerencialpdot/getPostProyectoIndicador', poolConexion, getPostProyectoIndicador);
+router.post('/api/:pool?/gerencialpdot/getDetalleProyecto', poolConexion, getDetalleProyecto);
 
 export default router;

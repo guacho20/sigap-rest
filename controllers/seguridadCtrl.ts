@@ -17,7 +17,7 @@ export const getColumna = async (req: Request, res: Response): Promise<Response>
         return res.json({ datos: data });
     } catch (error) {
         console.log(error.detail);
-        return res.status(500).json(error)
+        return res.status(400).json(error)
     }
 }
 
@@ -32,6 +32,9 @@ export const getConsultarTabla = async (req: Request, res: Response) => {
     } else {
         sql = `select * from ${nombreTabla}  order by ${campoOrden} `;
     }
+
+    // console.log(sql, valorData);
+
     try {
         const data = await Pool.consultar(sql, valorData);
         res.json({ error: false, datos: data });
@@ -96,7 +99,7 @@ export const getCombo = async (req: Request, res: Response) => {
         res.json({ error: false, datos: data });
     } catch (error) {
         console.log(error.detail);
-        res.status(500).json(error);
+        res.status(400).json(error);
     }
 }
 
@@ -113,7 +116,40 @@ export const cambiarClave = async (req: Request, res: Response) => {
         res.json({ error: false, mensaje: 'Se actualizo la contraseña' });
     } catch (error) {
         console.log(error.detail || error);
-        res.status(500).json(error);
+        res.status(400).json(error);
+    }
+}
+
+export const changePassword = async (req: Request, res: Response) => {
+    const { uid_usuario, contrasenaActual, nuevaContrasena } = req.body;
+    // console.log(req.body);
+    const query = `update seg_usuario set password_segusu =$1 , cambia_clave_segusu=false where ide_segusu=$2`;
+    try {
+        const usuario = await Pool.consultar('select password_segusu from seg_usuario where ide_segusu=$1', [uid_usuario]);
+        // console.log(usuario);
+        if (!bcrypt.compareSync(contrasenaActual, usuario[0].password_segusu)) {
+            return res.status(400).json({ mensaje: 'Contraseña actual incorrecta' });
+        }
+        const newPassword = await bcrypt.hashSync(nuevaContrasena, 10);
+        const data = await Pool.ejecutarQuery(query, [newPassword, uid_usuario]);
+        res.json({ error: false, mensaje: 'Se actualizo la contraseña' });
+    } catch (error) {
+        console.log(error.detail || error);
+        res.status(400).json(error);
+    }
+}
+
+export const resetPassword = async (req: Request, res: Response) => {
+    const { uid_usuario, nuevaContrasena } = req.body;
+    // console.log(req.body);
+    const query = `update seg_usuario set password_segusu =$1 , cambia_clave_segusu=true where ide_segusu=$2`;
+    try {
+        const newPassword = await bcrypt.hashSync(nuevaContrasena, 10);
+        const data = await Pool.ejecutarQuery(query, [newPassword, uid_usuario]);
+        res.json({ error: false, mensaje: 'Se actualizo la contraseña' });
+    } catch (error) {
+        console.log(error.detail || error);
+        res.status(400).json(error);
     }
 }
 
@@ -144,7 +180,7 @@ export const getReglasClaveString = async (req: Request, res: Response) => {
         res.json({ error: false, datos: reglas });
     } catch (error) {
         console.log(error.detail);
-        res.status(500).json(error);
+        res.status(400).json(error);
     }
 }
 
@@ -159,12 +195,12 @@ export const egecutarListaSql = async (req: Request, res: Response) => {
             if (data.tipo === 'insertar') {
                 cont = cont + 1;
                 delete data.valores[data.campoPrimario];
-                console.log('** veces rrecorrido, ', cont);
-                console.log('    ==>', data.nombreTabla, data.campoPrimario, data.valores[data.campoPrimario]);
-                console.log('    > inserto padre');
+                // console.log('** veces rrecorrido, ', cont);
+                // console.log('    ==>', data.nombreTabla, data.campoPrimario, data.valores[data.campoPrimario]);
+                // console.log('    > inserto padre');
                 const uid = await Pool.insertar(data.nombreTabla, data.valores, data.campoPrimario);
                 // console.log('    SQL : ', uid);
-                console.log('    < retorno pk', 100);
+                // console.log('    < retorno pk', 100);
                 const tablasHijas = data.relacion.split(',');
                 // TODO: verifico si la tabla tiene tablas hijas relacionadas y recorro las tablas relacionadas
                 if (tablasHijas.length > 0) {
@@ -172,46 +208,46 @@ export const egecutarListaSql = async (req: Request, res: Response) => {
                         // TODO: verifico si la tabla relacionada tiene registros hijos
                         const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla; });
                         hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
-                        console.log('        ***# ', hijos);
-                        console.log('        ***# ' + hijos.length + ' #***');
+                        // console.log('        ***# ', hijos);
+                        // console.log('        ***# ' + hijos.length + ' #***');
                         if (hijos.length > 0) {
-                            console.log('    >> Tengo hijos');
+                            // console.log('    >> Tengo hijos');
                             for (const hijo of hijos) {
                                 delete hijo.valores[hijo.campoPrimario];
                                 hijo.valores[hijo.campoforanea] = uid.raw[0][data.campoPrimario];
-                                console.log('        ==>', hijo.nombreTabla, hijo.campoPrimario, hijo.valores[hijo.campoPrimario]);
-                                console.log('        > inserto padre');
+                                // console.log('        ==>', hijo.nombreTabla, hijo.campoPrimario, hijo.valores[hijo.campoPrimario]);
+                                // console.log('        > inserto padre');
                                 const uid1 = await Pool.insertar(hijo.nombreTabla, hijo.valores);
                                 // console.log('SQL : ', uid1);
-                                console.log('        < retorno pk', 200);
+                                // console.log('        < retorno pk', 200);
                                 removeItemFromArr(datos, hijo);
                                 const tablasHijas1 = hijo.relacion.split(',');
                                 if (tablasHijas1.length > 0) {
                                     for (const tabla1 of tablasHijas1) {
                                         const hijos1 = datos.filter((hijo1: any) => { return hijo1.nombreTabla === tabla1; });
                                         hijos1.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
-                                        console.log('            ***# ', hijos1);
-                                        console.log('            ***# ' + hijos1.length + ' #***');
+                                        // console.log('            ***# ', hijos1);
+                                        // console.log('            ***# ' + hijos1.length + ' #***');
                                         if (hijos1.length > 0) {
-                                            console.log('        >> Tengo hijos');
+                                           //  console.log('        >> Tengo hijos');
                                             for (const hijo2 of hijos1) {
                                                 delete hijo2.valores[hijo2.campoPrimario];
                                                 hijo2.valores[hijo2.campoforanea] = uid1.raw[0][hijo.campoPrimario];
-                                                console.log('            ==>', hijo2.nombreTabla, hijo2.campoPrimario, hijo2.valores[hijo2.campoPrimario]);
-                                                console.log('            > inserto padre');
+                                              //   console.log('            ==>', hijo2.nombreTabla, hijo2.campoPrimario, hijo2.valores[hijo2.campoPrimario]);
+                                                // console.log('            > inserto padre');
                                                 const uid2 = await Pool.insertar(hijo2.nombreTabla, hijo2.valores, hijo2.campoPrimario);
                                                 // console.log('SQL : ', uid2);
-                                                console.log('            < retorno pk', 300);
+                                                // console.log('            < retorno pk', 300);
                                                 removeItemFromArr(datos, hijo2);
                                             }
                                         } else {
-                                            console.log('        >> No tengo hijos');
+                                            // console.log('        >> No tengo hijos');
                                         }
                                     }
                                 }
                             }
                         } else {
-                            console.log('    >> No tengo hijos');
+                            // console.log('    >> No tengo hijos');
                             // removeItemFromArr(datos, hijo);
                         }
                     }
@@ -220,125 +256,55 @@ export const egecutarListaSql = async (req: Request, res: Response) => {
                 const update = await Pool.actualizar(data.nombreTabla, data.valores, data.condiciones);
             }
         }
-        /*for (const data of datos) {
-            const { tipo, campoPrimario, campoforanea, nombreTabla, valores, condiciones, relacion, numero } = data;
-            if (tipo === 'insertar') {
-                // delete valores[campoPrimario];
-                // verifico que sea padre
-                // if (1)
-                console.info('--> inserto padre', nombreTabla);
-                // const uid = await Pool.insertar(data.nombreTabla, data.valores);
-                console.log('dato insertado', valores[campoPrimario]);
-                // console.log('retorno', uid.raw[0][campoPrimario]);
-                const tablasHijas = data.relacion.split(',');
-                // console.log(tablasHijas.length);
-                if (tablasHijas.length > 0) {
-                    for (const tabla of tablasHijas) {
-                        console.log('Tabla hija a recorrer ', tabla);
-                        // TODO: verifico si tiene registros la tabla relacionada
-                        const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla; });
-                        hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
-                        console.log('Hijos ', hijos);
-                        for (const hijo of hijos) {
-                            // delete hijo.valores[hijo.campoPrimario];
-                            hijo.valores[hijo.campoforanea] = 100;// uid.raw[0][campoPrimario];
-                            if (hijo.relacion) {
-                                formarGuardarRecursivo(hijo, datos);
-                            } else {
-                                console.log('Inserto hijo ');
-                                console.log('dato insertado', hijo.valores[hijo.campoPrimario]);
-                               // const uidHijo = await Pool.insertar(hijo.nombreTabla, hijo.valores);
-                                // console.log('retorno ', uidHijo.raw[0][hijo.campoPrimario]);
-                                console.log('Elimino el hijno insertado del array');
-                                removeItemFromArr(datos, hijo);
-                            }
-                        }
-                    }
-                }
-                // console.log('Array corrido, ', datos);
-                /*if (data.numero === '1') {
-                    if (data.isPadre) {
-                        console.log('soy padre y mis hijos son: > ', data.relacion);
-                        console.info('--> inserto padre', nombreTabla);
-                        const uid = await Pool.insertar(nombreTabla, valores);
-                        console.info('<-- retorno ide padre');
-                        const tablasHijas = data.relacion.split(',');
-                        // TODO: Recorro las tablas hijas
-                        for (const tabla of tablasHijas){
-                            console.log('tabla hija >: ',tabla);
-                            // TODO: Verifico si la tabla hija tiene datos
-                            const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla;});
-                            hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
-                            // TODO: Recooro los hijos para insertar
-                            for (const hijo of hijos){
-                                // TODO: verifico si el hijo asu vez es padre
-                                // console.log('insetar >',hijo, uid.raw[0][hijo.campoforanea]);
-                                delete hijo.valores[hijo.campoPrimario];
-                                hijo.valores[hijo.campoforanea] = uid.raw[0][hijo.campoforanea];
-                                if(!hijo.isHijo){
-                                    console.log('    tengo hijos >>: ',hijo.relacion);
-                                    formarGuardarRecursivo(uid, hijo, datos);
-                                }else{
-                                    const ds = await Pool.insertar(hijo.nombreTabla, hijo.valores);
-                                    console.log(' No tengo hijos >>: ',hijo.relacion);
-                                }
-                            }
-                        }
-                        /*
-                        const tablasHijas = datos.filter(function (tabla: any) {
-                            // console.log(col.nombreTabla, col.nombreTabla === relacion);
-                            return tabla.nombreTabla === relacion;
-                        })
-                        for (const tabla of tablasHijas){
-                            console.log('Recorro las tablas hijas', tablasHijas);
-                        }*/
-        /* }
-
-        /* const cadenaMeses = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,";
-         const tablasHijas = cadenaMeses.split(',');
-         console.log(tablasHijas.length);*/
-        /* 
-
-        // rrecorro los hijos
-        // console.info('Recorro los hijos ');
-        // tslint:disable-next-line: only-arrow-functions
-        const hijos = datos.filter(function (col: any) {
-            // console.log(col.nombreTabla, col.nombreTabla === relacion);
-            return col.nombreTabla === relacion;
-        });
-        // console.log('hijos ordenados > ', );
-        // ordeno la insercion
-        hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
-        if (hijos.length > 0) {
-            // inserto padre
-            console.info('--> inserto padre', nombreTabla);
-            // console.log(valores);
-            // retorno ide padre
-            console.info('<-- retorno ide padre');
-            const uid = 102;
-            for (const item of hijos) {
-                if (item.relacion) {
-                    item.valores[item.campoforanea] = uid;
-                    console.info('  ===> Soy hijo y padre a la vez', item.relacion);
-                    formarGuardarRecursivo(uid, item, datos);
-                    continue;
-                }
-            }
-        } else {
-            console.info('--> Inserto los hijos que no tienen mas hijos ');
-        } */
-        // valores[campoforanea] = uid;
-        /*} else if(!data.isPadre && data.isHijo) {
-            console.info('No son padres');
-        }*/
-        // const insert = await Pool.insertar(nombreTabla, valores);
-        /*} else if (tipo === 'modificar') {
-            // console.log('modificar', data);
-            // const update = await Pool.actualizar(nombreTabla, valores, condiciones);
-        }
-        // console.log('Datos actuales, >>> ', datos);
-    }*/
         res.json({ mensaje: 'echo comit ok' });
+    } catch (error) {
+        console.log(error.detail, error);
+        res.status(400).json(error);
+    }
+}
+
+export const saveUser = async (req: Request, res: Response) => {
+    try {
+        const datos = req.body.data;
+        datos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
+        let cont = 0;
+        // TODO: recorro la lista de sql
+        for (const data of datos) {
+            if (data.tipo === 'insertar') {
+                delete data.valores[data.campoPrimario];
+                const newPassword = await bcrypt.hashSync(data.valores['password_segusu'], 10);
+        
+                data.valores['password_segusu'] = newPassword;
+
+                const uid = await Pool.insertar(data.nombreTabla, data.valores, data.campoPrimario);
+               
+            } else if (data.tipo === 'modificar') {
+                const update = await Pool.actualizar(data.nombreTabla, data.valores, data.condiciones);
+            }
+        }
+        res.json({ mensaje: 'echo comit ok' });
+    } catch (error) {
+        console.log(error.detail, error);
+        res.status(400).json(error);
+    }
+}
+
+export const getConsultaGenerica = async (req: Request, res: Response) => {
+    const {sql, parametros} = req.body
+    try {
+        const data = await Pool.consultar(sql, parametros);
+        res.json({ error: false, datos: data });
+    } catch (error) {
+        console.log(error.detail, error);
+        res.status(400).json(error);
+    }
+}
+
+export const updateGenerico = async (req: Request, res: Response) => {
+    const {sql, parametros} = req.body
+    try {
+        const data = await Pool.consultar(sql, parametros);
+        res.json({ error: false, datos: data });
     } catch (error) {
         console.log(error.detail, error);
         res.status(400).json(error);
@@ -386,7 +352,7 @@ export const getOpciones = async (req: Request, res: Response) => {
         res.json({ error: false, datos: data });
     } catch (error) {
         console.log(error.detail);
-        res.status(500).json(error);
+        res.status(400).json(error);
     }
 }
 
@@ -400,7 +366,7 @@ export const getClientes = async (req: Request, res: Response) => {
         res.json({ error: false, datos: data, total: data.length });
     } catch (error) {
         console.log(error.detail);
-        res.status(500).json(error);
+        res.status(400).json(error);
     }
 }
 
@@ -414,7 +380,7 @@ export const esUnico = async (req: Request, res: Response) => {
         res.json({ error: false, datos: data });
     } catch (error) {
         console.log(error.detail);
-        res.status(500).json(error);
+        res.status(400).json(error);
     }
 }
 
@@ -428,7 +394,7 @@ async function formarGuardarRecursivo(children: any, datos: any) {
     // console.log(tablasHijas.length);
     if (tablasHijas.length > 0) {
         for (const tabla of tablasHijas) {
-            console.log('    Tabla hija a recorrer ', tabla);
+            // console.log('    Tabla hija a recorrer ', tabla);
             // TODO: verifico si tiene registros la tabla relacionada
             const hijos = datos.filter((hijo: any) => { return hijo.nombreTabla === tabla; });
             hijos.sort((a: any, b: any) => (b.valores[b.campoPrimario] < a.valores[a.campoPrimario] ? -1 : 1));
