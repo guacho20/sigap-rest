@@ -79,10 +79,10 @@ export const getDetalleProyecto = async (req: Request, res: Response) => {
 
     if (condicion) {
         const sql = `
-        select a.ide_proyecto,detalle_proyecto, detalle_meta,detalle_perspectiva,a.ide_matriz,
+        select a.ide_proyecto,detalle_proyecto, detalle_meta,detalle_perspectiva,abreviatura_ystmen,a.ide_matriz,
         sum(valor_variacion) as suma_porce,extract(year from fecha_variacion) as anio, a.ide_perspectiva
         from (
-        select a.ide_proyecto,detalle_proyecto,d.ide_perspectiva,meta.ide_objetivo,meta.detalle_objetivo as detalle_meta,ide_matriz,detalle_perspectiva
+        select a.ide_proyecto,detalle_proyecto,d.ide_perspectiva,abreviatura_ystmen,meta.ide_objetivo,meta.detalle_objetivo as detalle_meta,ide_matriz,detalle_perspectiva
         from ge_proyecto a, ge_objetivo meta,ge_matriz_frecuencia c,ge_perspectiva d
         where a.ide_proyecto=meta.ide_proyecto
         and meta.ide_objetivo = c.ide_objetivo
@@ -93,7 +93,7 @@ export const getDetalleProyecto = async (req: Request, res: Response) => {
         	) b where a.ide_matriz=b.ide_matriz
         group by extract(year from fecha_variacion),
         a.ide_proyecto,a.ide_objetivo,detalle_proyecto
-        ,detalle_meta,detalle_perspectiva,a.ide_matriz, a.ide_perspectiva 
+        ,detalle_meta,detalle_perspectiva,abreviatura_ystmen,a.ide_matriz, a.ide_perspectiva 
         ${condicion}`;
         try {
             // console.log(req.body, sql);
