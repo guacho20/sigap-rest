@@ -95,6 +95,7 @@ export const getCombo = async (req: Request, res: Response) => {
         ${sqlCondicion}
         ORDER BY ${campoNombre}`;
     try {
+        // console.log('sql del combo', query);
         const data = await Pool.consultar(query);
         res.json({ error: false, datos: data });
     } catch (error) {

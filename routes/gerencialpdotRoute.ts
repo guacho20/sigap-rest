@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { poolConexion } from './../middleware/pool';
-import { getProyecto, getPostMeta, getPostProyectoIndicador } from './../controllers/gerencialpdotCtrl';
-import { getDetalleProyecto } from '../controllers/gerencialpdotCtrl';
+import { getProyecto, getPostMeta, getPostProyectoIndicador, getProyectosAsignados } from './../controllers/gerencialpdotCtrl';
+import { getDetalleProyecto, getPrintReporte } from '../controllers/gerencialpdotCtrl';
+import { validarJWT } from '../middleware/validarJwt';
 const router = Router();
 // todas las rutas del gerencialpdot
 /**
@@ -14,5 +15,7 @@ router.post('/api/:pool?/gerencialpdot/getProyecto', poolConexion, getProyecto);
 router.post('/api/:pool?/gerencialpdot/getPostMeta', poolConexion, getPostMeta);
 router.post('/api/:pool?/gerencialpdot/getPostProyectoIndicador', poolConexion, getPostProyectoIndicador);
 router.post('/api/:pool?/gerencialpdot/getDetalleProyecto', poolConexion, getDetalleProyecto);
+router.post('/api/:pool?/gerencialpdot/getProyectoAsignados', poolConexion,validarJWT, getProyectosAsignados);
+router.post('/api/:pool?/gerencialpdot/getPrintReporte', poolConexion, getPrintReporte);
 
 export default router;
