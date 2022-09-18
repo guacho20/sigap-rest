@@ -11,7 +11,6 @@ export default class Pool {
 
     private static coneccion(): Connection {
         const conexion = getConnection(this.pool);
-        // console.log('Este es el pool para la coneccion de query', this.pool, this.opciones);
         this.setConnectionOptions(conexion.options);
         return conexion;
     }
